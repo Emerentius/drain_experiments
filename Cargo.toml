@@ -1,0 +1,6 @@
+[package]
+name = "try_drain"
+version = "0.1.0"
+authors = ["Emerentius <emerentius@arcor.de>"]
+
+[dependencies]
