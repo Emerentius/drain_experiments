@@ -12,7 +12,7 @@ struct _TryDrain<'a, T: 'a> {
 }
 
 struct TryDrain<'a, T: 'a, F>
-    where F: FnMut(&mut T) -> bool,
+    where F: FnMut(&mut T) -> Flag,
 {
     drain: _TryDrain<'a, T>,
     pred: F,
@@ -25,7 +25,7 @@ impl<'a, T: 'a> _TryDrain<'a, T> {
 }
 
 impl<'a, T: 'a, F> std::ops::Drop for TryDrain<'a, T, F>
-    where F: FnMut(&mut T) -> bool,
+    where F: FnMut(&mut T) -> Flag,
 {
     fn drop(&mut self) {
         //for _ in self.by_ref() {}
@@ -183,13 +183,12 @@ enum Flag {
 
 impl<'a: 'b, 'b, T: 'a, F> Iterator for TryDrain<'a, T, F>
     //where F: for<'c, 'd> FnMut(&mut T) -> Flag,
-    where F: FnMut(&mut T) -> bool,
+    where F: FnMut(&mut T) -> Flag,
 {
     type Item = T;
 
     #[inline]
     fn next(&mut self) -> Option<Self::Item> {
-        /*
         while (self.drain.idx != self.drain.old_len) & !self.drain.finished {
             let i = self.drain.idx;
             self.drain.idx += 1;
@@ -226,9 +225,9 @@ impl<'a: 'b, 'b, T: 'a, F> Iterator for TryDrain<'a, T, F>
             }
         }
         None
-        */
 
 
+        /*
         unsafe {
             while self.drain.idx != self.drain.old_len {
                 let i = self.drain.idx;
@@ -248,8 +247,7 @@ impl<'a: 'b, 'b, T: 'a, F> Iterator for TryDrain<'a, T, F>
                 }
             }
             None
-        }
-
+        */
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
@@ -257,35 +255,85 @@ impl<'a: 'b, 'b, T: 'a, F> Iterator for TryDrain<'a, T, F>
     }
 }
 
-trait VecTryDrain {
-    type T;
-    fn try_drain<F>(&mut self, filter: F) -> TryDrain<Self::T, F>
-        //where F: FnMut(&mut Self::T) -> Flag;
-        where F: FnMut(&mut Self::T) -> bool;
+struct DrainBuilder<'a, T: 'a> {
+    vec: &'a mut Vec<T>,
+    start: usize,
+    end: usize,
 }
 
-impl<T> VecTryDrain for Vec<T> {
-    type T = T;
+struct DrainFilterBuilder<'a, T: 'a, F: FnMut(&mut T) -> bool>(std::vec::DrainFilter<'a, T, F>);
+struct TryDrainBuilder<'a, T: 'a, F: FnMut(&mut T) -> Flag>(TryDrain<'a, T, F>);
 
-    fn try_drain<F>(&mut self, filter: F) -> TryDrain<Self::T, F>
-        //where F: FnMut(&mut T) -> Flag
-        where F: FnMut(&mut Self::T) -> bool
+impl<'a, T: 'a, F: FnMut(&mut T) -> bool> IntoIterator for DrainFilterBuilder<'a, T, F> {
+    type IntoIter = std::vec::DrainFilter<'a, T, F>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+    }
+}
+
+impl<'a, T: 'a, F: FnMut(&mut T) -> Flag> IntoIterator for TryDrainBuilder<'a, T, F> {
+    type IntoIter = TryDrain<'a, T, F>;
+    type Item = T;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.0
+    }
+}
+
+impl<'a, T: 'a> DrainBuilder<'a, T> {
+    fn range(mut self, rg: std::ops::Range<usize>) -> Self {
+        self.start = rg.start;
+        self.end = rg.end;
+        self
+    }
+
+    fn filter<F: FnMut(&mut T) -> bool>(self, f: F) -> DrainFilterBuilder<'a, T, F> {
+        DrainFilterBuilder(self.vec.drain_filter(f))
+    }
+
+    fn try_drain<F: FnMut(&mut T) -> Flag>(self, pred: F) -> TryDrainBuilder<'a, T, F>
     {
-        let old_len = self.len();
+        let old_len = self.vec.len();
 
         // Guard against us getting leaked (leak amplification)
-        unsafe { self.set_len(0); }
+        unsafe { self.vec.set_len(0); }
 
-        TryDrain {
+        TryDrainBuilder(TryDrain {
             drain: _TryDrain {
-                vec: self,
+                vec: self.vec,
                 finished: false,
                 idx: 0,
                 del: 0,
                 old_len,
+                //last_element_taken: false,
             },
-            pred: filter,
+            pred,
+        })
+    }
+}
+
+trait VecExtend {
+    type T;
+    fn try_drain<'a, F: FnMut(&mut Self::T) -> Flag>(&'a mut self, pred: F) -> TryDrain<'a, Self::T, F>;
+    fn drain_builder(&mut self) -> DrainBuilder<Self::T>;
+}
+
+impl<T> VecExtend for Vec<T> {
+    type T = T;
+    fn drain_builder(&mut self) -> DrainBuilder<Self::T> {
+        DrainBuilder {
+            start: 0,
+            end: self.len(),
+            vec: self,
         }
+    }
+
+
+    fn try_drain<'a, F: FnMut(&mut T) -> Flag>(&'a mut self, pred: F) -> TryDrain<'a, T, F>
+    {
+        self.drain_builder().try_drain(pred).into_iter()
     }
 }
 
@@ -294,13 +342,13 @@ fn main() {
     {
         let mut d = a.try_drain(|mut el| {
             // break out
-            /*
+
             match *el >= 4 {
                 true => Flag::Return,
                 false => Flag::Yield,
             }
-            */
-            *el < 4
+
+            //*el < 4
         });
         for element in d.by_ref()
         /*a.try_drain(|mut el| {
@@ -317,8 +365,8 @@ fn main() {
 
     }
 
-    //for element in a.try_drain(|el| if *el < 7 { Flag::Yield } else { Flag::Break })
-    for element in a.try_drain(|el| *el < 7)
+    for element in a.try_drain(|el| if *el < 7 { Flag::Yield } else { Flag::Break })
+    //for element in a.try_drain(|el| *el < 7)
         .take(3)
     {
         println!("{}", element);
@@ -374,7 +422,7 @@ fn try_drain(b: &mut test::Bencher) {
     let vec = (0..1_000_000).collect::<Vec<_>>();
     b.iter(|| {
         let mut v = vec.clone();
-        v.try_drain(|el| true).for_each(|_| ());
+        v.try_drain(|el| Flag::Yield).for_each(|_| ());
     })
 }
 
@@ -401,6 +449,6 @@ fn try_drain_string(b: &mut test::Bencher) {
     let vec = (0..1000).map(|n| n.to_string()).collect::<Vec<_>>();
     b.iter(|| {
         let mut v = vec.clone();
-        v.try_drain(|el| true).for_each(drop);
+        v.try_drain(|el| Flag::Yield).for_each(drop);
     })
 }
