@@ -1,5 +1,4 @@
-/*
-trait IteratorExt {
+pub trait IteratorExt {
     fn exhausting(self) -> Exhausting<Self> where Self: Sized + Iterator;
 }
 
@@ -14,13 +13,13 @@ impl<T: Iterator> IteratorExt for T {
     }
 }
 
-struct Exhausting<T: Iterator> {
+pub struct Exhausting<T: Iterator> {
     iter: T
 }
 
-impl<T: Iterator> std::ops::Drop for Exhausting<T> {
+impl<T: Iterator> ::std::ops::Drop for Exhausting<T> {
     fn drop(&mut self) {
-        for _ in self {}
+        self.iter.by_ref().for_each(drop)
     }
 }
 
@@ -31,4 +30,4 @@ impl<T: Iterator> Iterator for Exhausting<T> {
         self.iter.next()
     }
 }
-*/
+

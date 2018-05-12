@@ -1,16 +1,20 @@
 #![feature(drain_filter)]
-mod flag;
 mod _try_drain;
-mod drain_element_flag;
-mod drain_element_streaming;
-mod drain_refmut_flag;
-mod drain_element_move_flag;
+pub mod flag;
+pub mod drain_element_flag;
+pub mod drain_element_streaming;
+pub mod drain_refmut_flag;
+pub mod drain_element_move_flag;
+pub mod exhausting;
+pub mod cursor;
 
-pub use flag::{Flag, MoveFlag};
-pub use drain_refmut_flag::TryDrain;
-pub use drain_element_streaming::{StreamDrain, StreamElement};
-pub use drain_element_flag::{ElementTryDrain, Element};
-pub use drain_element_move_flag::{ElementMoveDrain, MoveElement};
+use exhausting::{Exhausting, IteratorExt};
+use flag::{Flag, MoveFlag};
+use drain_refmut_flag::TryDrain;
+use drain_element_streaming::{StreamDrain, StreamElement};
+use drain_element_flag::{ElementTryDrain, Element};
+use drain_element_move_flag::{ElementMoveDrain, MoveElement};
+use cursor::{Cursor, CursorIter};
 
 
 pub struct DrainBuilder<'a, T: 'a> {
@@ -86,6 +90,7 @@ impl<'a, T: 'a> DrainBuilder<'a, T> {
 pub trait VecExtend {
     type T;
     fn drain_builder(&mut self) -> DrainBuilder<Self::T>;
+    fn cursor(&mut self) -> Cursor<Self::T>;
 }
 
 impl<T> VecExtend for Vec<T> {
@@ -96,5 +101,9 @@ impl<T> VecExtend for Vec<T> {
             end: self.len(),
             vec: self,
         }
+    }
+
+    fn cursor(&mut self) -> Cursor<T> {
+        Cursor::new(self)
     }
 }

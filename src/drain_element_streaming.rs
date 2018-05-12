@@ -1,17 +1,5 @@
 use _try_drain::_TryDrain;
-//use element::StreamElement;
 use ::std::{ops, slice, ptr, mem};
-
-/*
-struct _TryDrain<'a, T: 'a> {
-    vec: &'a mut Vec<T>,
-    finished: bool,
-    idx: usize,
-    del: usize,
-    old_len: usize,
-    last_element_taken: bool,
-}
-*/
 
 pub struct StreamDrain<'a, T: 'a> {
     drain: _TryDrain<'a, T>,
